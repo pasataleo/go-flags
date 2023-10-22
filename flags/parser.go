@@ -19,3 +19,9 @@ func (p *StringParser) Parse(name string, args map[string]string) (string, error
 
 	return args[name], nil
 }
+
+type BoolParser struct{}
+
+func (p *BoolParser) Parse(name string, args map[string]string) (bool, error) {
+
+}
