@@ -1,6 +1,7 @@
 package flags
 
 import (
+	"github.com/pasataleo/go-inject/inject"
 	"github.com/pasataleo/go-testing/tests"
 	"testing"
 )
@@ -127,4 +128,16 @@ func TestFlags_ParseReadOnly(t *testing.T) {
 
 	args := []string{"path/to/executable", "--value", "hello"}
 	tests.ExecFn(t, flags.Parse, args, ParseBehaviorReadOnly).NoError().Equals(args)
+}
+
+func TestFlags_ParseToInjector(t *testing.T) {
+	injector := inject.NewInjector()
+
+	flags := Set()
+	BindString("value", false, "default").ToInjectorUnsafe(flags, injector, "value")
+
+	args := []string{"--value", "hello"}
+	tests.ExecFn(t, flags.Parse, args).NoError()
+
+	tests.ExecFn(t, injector.Get, "value").NoError().Equals("hello")
 }
