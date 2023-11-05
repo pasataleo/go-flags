@@ -2,10 +2,11 @@ package flags
 
 import (
 	"fmt"
-	"github.com/pasataleo/go-errors/errors"
-	"github.com/pasataleo/go-inject/inject"
 	"reflect"
 	"strings"
+
+	"github.com/pasataleo/go-errors/errors"
+	"github.com/pasataleo/go-inject/inject"
 )
 
 type ParseBehavior int
@@ -15,19 +16,19 @@ const (
 	ParseBehaviorReadOnly
 )
 
-type Flags struct {
-	flags   map[string]*flag[any]
+type Set struct {
+	Flags   map[string]*Flag[any]
 	aliases map[string]string
 }
 
-func Set() *Flags {
-	return &Flags{
-		flags:   make(map[string]*flag[any]),
+func NewSet() *Set {
+	return &Set{
+		Flags:   make(map[string]*Flag[any]),
 		aliases: make(map[string]string),
 	}
 }
 
-func (flags *Flags) Parse(args []string, behaviours ...ParseBehavior) ([]string, error) {
+func (flags *Set) Parse(args []string, behaviours ...ParseBehavior) ([]string, error) {
 	var strict, readOnly bool
 	for _, behaviour := range behaviours {
 		switch behaviour {
@@ -41,7 +42,7 @@ func (flags *Flags) Parse(args []string, behaviours ...ParseBehavior) ([]string,
 	return flags.parse(args, strict, readOnly)
 }
 
-func (flags *Flags) parse(args []string, strict bool, readOnly bool) ([]string, error) {
+func (flags *Set) parse(args []string, strict bool, readOnly bool) ([]string, error) {
 	var err error
 
 	// Anything we don't process will be returned.
@@ -103,9 +104,9 @@ func (flags *Flags) parse(args []string, strict bool, readOnly bool) ([]string, 
 		name, value, containsValue := hasFlagValue(flag)
 		name, alias := resolveName(name)
 
-		if _, exists := flags.flags[name]; !exists {
+		if _, exists := flags.Flags[name]; !exists {
 			if strict {
-				err = errors.Append(err, errors.Newf(nil, ErrorCodeUnknownFlag, "unknown flag %s", name))
+				err = errors.Append(err, errors.Newf(nil, ErrorCodeUnknownFlag, "unknown flag %q", name))
 			}
 			appendRemaining(arg)
 			continue
@@ -137,15 +138,15 @@ func (flags *Flags) parse(args []string, strict bool, readOnly bool) ([]string, 
 		unparsed[name][alias] = ""
 	}
 
-	for name, flag := range flags.flags {
+	for name, flag := range flags.Flags {
 		if _, exists := unparsed[name]; !exists {
 			if !flag.Optional {
-				err = errors.Append(err, errors.Newf(nil, ErrorCodeMissingFlag, "missing flag %s", name))
+				err = errors.Append(err, errors.Newf(nil, ErrorCodeMissingFlag, "missing flag %q", name))
 				continue
 			}
 
-			if err := flag.setValue(flag.Default); err != nil {
-				err = errors.Append(err, errors.Newf(err, ErrorCodeInvalidValue, "could not set default value for %s", name))
+			if valueErr := flag.setValue(flag.Default); valueErr != nil {
+				err = errors.Append(err, errors.Newf(valueErr, ErrorCodeInvalidValue, "could not set default value for %q", name))
 			}
 			continue
 		}
@@ -153,34 +154,34 @@ func (flags *Flags) parse(args []string, strict bool, readOnly bool) ([]string, 
 		values := unparsed[name]
 		delete(unparsed, name)
 
-		if flag.Parser != nil {
+		if flag.parser != nil {
 			var flattened []string
 			for _, value := range values {
 				flattened = append(flattened, value)
 			}
 
-			value, valueErr := flag.Parser.Parse(name, flattened)
+			value, valueErr := flag.parser.Parse(name, flattened)
 			if valueErr != nil {
-				err = errors.Append(err, errors.Newf(valueErr, ErrorCodeInvalidValue, "invalid flag %s", name))
+				err = errors.Append(err, errors.Newf(valueErr, ErrorCodeInvalidValue, "invalid flag %q", name))
 				continue
 			}
 
-			if err := flag.setValue(value); err != nil {
-				err = errors.Append(err, errors.Newf(err, ErrorCodeInvalidValue, "invalid flag %s", name))
+			if valueErr := flag.setValue(value); valueErr != nil {
+				err = errors.Append(err, errors.Newf(valueErr, ErrorCodeInvalidValue, "invalid flag %q", name))
 			}
 
 			continue
 		}
 
-		if flag.AliasParser != nil {
-			value, valueErr := flag.AliasParser.Parse(name, values)
+		if flag.aliasParser != nil {
+			value, valueErr := flag.aliasParser.Parse(name, values)
 			if valueErr != nil {
-				err = errors.Append(err, errors.Newf(valueErr, ErrorCodeInvalidValue, "invalid flag %s", name))
+				err = errors.Append(err, errors.Newf(valueErr, ErrorCodeInvalidValue, "invalid flag %q", name))
 				continue
 			}
 
-			if err := flag.setValue(value); err != nil {
-				err = errors.Append(err, errors.Newf(err, ErrorCodeInvalidValue, "invalid flag %s", name))
+			if valueErr := flag.setValue(value); valueErr != nil {
+				err = errors.Append(err, errors.Newf(valueErr, ErrorCodeInvalidValue, "invalid flag %q", name))
 			}
 
 			continue
@@ -193,222 +194,239 @@ func (flags *Flags) parse(args []string, strict bool, readOnly bool) ([]string, 
 	return remaining, err
 }
 
-type flag[T any] struct {
-	Name     string
-	Aliases  []string
-	Default  T
-	Optional bool
+type Flag[T any] struct {
+	Name        string
+	Aliases     []string
+	Default     T
+	Optional    bool
+	Description string
 
-	Parser      Parser[T]
-	AliasParser aliasParser[T]
+	parser      Parser[T]
+	aliasParser aliasParser[T]
 
-	// Injector and Args are used for injecting the flag value via an Injector.
-	Injector *inject.Injector
-	Args     []string
+	// injector and args are used for injecting the flag value via an injector.
+	injector *inject.Injector
+	args     []string
 
-	// Target is used for injecting the flag value directly into a value.
-	Target reflect.Value
+	// target is used for injecting the flag value directly into a value.
+	target reflect.Value
 }
 
-func (f *flag[T]) setValue(value T) error {
-	if f.Injector != nil {
-		return inject.BindValue(value).To(f.Injector, f.Args...)
+func (f *Flag[T]) setValue(value T) error {
+	if f.injector != nil {
+		return inject.BindValue(value).To(f.injector, f.args...)
 	}
 
-	f.Target.Set(reflect.ValueOf(value))
+	f.target.Set(reflect.ValueOf(value))
 	return nil
 }
 
-func (f *flag[T]) generic() *flag[interface{}] {
-	generic := &flag[interface{}]{
-		Name:     f.Name,
-		Aliases:  f.Aliases,
-		Default:  f.Default,
-		Optional: f.Optional,
-		Injector: f.Injector,
-		Args:     f.Args,
-		Target:   f.Target,
+func (f *Flag[T]) generic() *Flag[interface{}] {
+	generic := &Flag[interface{}]{
+		Name:        f.Name,
+		Aliases:     f.Aliases,
+		Default:     f.Default,
+		Optional:    f.Optional,
+		Description: f.Description,
+		injector:    f.injector,
+		args:        f.args,
+		target:      f.target,
 	}
 
-	if f.Parser != nil {
-		generic.Parser = &parserWrapper[T]{
-			parser: f.Parser,
+	if f.parser != nil {
+		generic.parser = &parserWrapper[T]{
+			parser: f.parser,
 		}
 	}
 
-	if f.AliasParser != nil {
-		generic.AliasParser = &aliasWrapper[T]{
-			parser: f.AliasParser,
+	if f.aliasParser != nil {
+		generic.aliasParser = &aliasWrapper[T]{
+			parser: f.aliasParser,
 		}
 	}
 
 	return generic
 }
 
-func BindValue[T any](name string, optional bool, defaultValue T, Parser Parser[T]) *FlagContext[T] {
-	return &FlagContext[T]{
-		flag: &flag[T]{
-			Name:     name,
-			Parser:   Parser,
-			Default:  defaultValue,
-			Optional: optional,
+func BindValue[T any](name string, description string, optional bool, defaultValue T, parser Parser[T]) *Binder[T] {
+	return &Binder[T]{
+		flag: &Flag[T]{
+			Name:        name,
+			Default:     defaultValue,
+			Optional:    optional,
+			Description: description,
+			parser:      parser,
 		},
 	}
 }
 
-func BindBoolean(name string, optional bool, defaultValue bool) *FlagContext[bool] {
-	return &FlagContext[bool]{
-		flag: &flag[bool]{
+func BindBoolean(name string, description string, optional bool, defaultValue bool) *Binder[bool] {
+	return &Binder[bool]{
+		flag: &Flag[bool]{
 			Name: name,
 			Aliases: []string{
 				fmt.Sprintf("no-%s", name),
 			},
-			AliasParser: &boolParser{},
 			Default:     defaultValue,
 			Optional:    optional,
+			Description: description,
+			aliasParser: &boolParser{},
 		},
 	}
 }
 
-func BindString(name string, optional bool, defaultValue string) *FlagContext[string] {
-	return &FlagContext[string]{
-		flag: &flag[string]{
-			Name:     name,
-			Parser:   stringParser(),
-			Default:  defaultValue,
-			Optional: optional,
+func BindString(name string, description string, optional bool, defaultValue string) *Binder[string] {
+	return &Binder[string]{
+		flag: &Flag[string]{
+			Name:        name,
+			Default:     defaultValue,
+			Optional:    optional,
+			Description: description,
+			parser:      stringParser(),
 		},
 	}
 }
 
-func BindInt(name string, optional bool, defaultValue int) *FlagContext[int] {
-	return &FlagContext[int]{
-		flag: &flag[int]{
-			Name:     name,
-			Parser:   intParser(),
-			Default:  defaultValue,
-			Optional: optional,
+func BindInt(name string, description string, optional bool, defaultValue int) *Binder[int] {
+	return &Binder[int]{
+		flag: &Flag[int]{
+			Name:        name,
+			parser:      intParser(),
+			Default:     defaultValue,
+			Optional:    optional,
+			Description: description,
 		},
 	}
 }
 
-func BindInt8(name string, optional bool, defaultValue int8) *FlagContext[int8] {
-	return &FlagContext[int8]{
-		flag: &flag[int8]{
-			Name:     name,
-			Parser:   int8Parser(),
-			Default:  defaultValue,
-			Optional: optional,
+func BindInt8(name string, description string, optional bool, defaultValue int8) *Binder[int8] {
+	return &Binder[int8]{
+		flag: &Flag[int8]{
+			Name:        name,
+			parser:      int8Parser(),
+			Default:     defaultValue,
+			Optional:    optional,
+			Description: description,
 		},
 	}
 }
 
-func BindInt16(name string, optional bool, defaultValue int16) *FlagContext[int16] {
-	return &FlagContext[int16]{
-		flag: &flag[int16]{
-			Name:     name,
-			Parser:   int16Parser(),
-			Default:  defaultValue,
-			Optional: optional,
+func BindInt16(name string, description string, optional bool, defaultValue int16) *Binder[int16] {
+	return &Binder[int16]{
+		flag: &Flag[int16]{
+			Name:        name,
+			parser:      int16Parser(),
+			Default:     defaultValue,
+			Optional:    optional,
+			Description: description,
 		},
 	}
 }
 
-func BindInt32(name string, optional bool, defaultValue int32) *FlagContext[int32] {
-	return &FlagContext[int32]{
-		flag: &flag[int32]{
-			Name:     name,
-			Parser:   int32Parser(),
-			Default:  defaultValue,
-			Optional: optional,
+func BindInt32(name string, description string, optional bool, defaultValue int32) *Binder[int32] {
+	return &Binder[int32]{
+		flag: &Flag[int32]{
+			Name:        name,
+			parser:      int32Parser(),
+			Default:     defaultValue,
+			Optional:    optional,
+			Description: description,
 		},
 	}
 }
 
-func BindInt64(name string, optional bool, defaultValue int64) *FlagContext[int64] {
-	return &FlagContext[int64]{
-		flag: &flag[int64]{
-			Name:     name,
-			Parser:   int64Parser(),
-			Default:  defaultValue,
-			Optional: optional,
+func BindInt64(name string, description string, optional bool, defaultValue int64) *Binder[int64] {
+	return &Binder[int64]{
+		flag: &Flag[int64]{
+			Name:        name,
+			parser:      int64Parser(),
+			Default:     defaultValue,
+			Optional:    optional,
+			Description: description,
 		},
 	}
 }
 
-func BindUint(name string, optional bool, defaultValue uint) *FlagContext[uint] {
-	return &FlagContext[uint]{
-		flag: &flag[uint]{
-			Name:     name,
-			Parser:   uintParser(),
-			Default:  defaultValue,
-			Optional: optional,
+func BindUint(name string, description string, optional bool, defaultValue uint) *Binder[uint] {
+	return &Binder[uint]{
+		flag: &Flag[uint]{
+			Name:        name,
+			parser:      uintParser(),
+			Default:     defaultValue,
+			Optional:    optional,
+			Description: description,
 		},
 	}
 }
 
-func BindUint8(name string, optional bool, defaultValue uint8) *FlagContext[uint8] {
-	return &FlagContext[uint8]{
-		flag: &flag[uint8]{
-			Name:     name,
-			Parser:   uint8Parser(),
-			Default:  defaultValue,
-			Optional: optional,
+func BindUint8(name string, description string, optional bool, defaultValue uint8) *Binder[uint8] {
+	return &Binder[uint8]{
+		flag: &Flag[uint8]{
+			Name:        name,
+			parser:      uint8Parser(),
+			Default:     defaultValue,
+			Optional:    optional,
+			Description: description,
 		},
 	}
 }
 
-func BindUint16(name string, optional bool, defaultValue uint16) *FlagContext[uint16] {
-	return &FlagContext[uint16]{
-		flag: &flag[uint16]{
-			Name:     name,
-			Parser:   uint16Parser(),
-			Default:  defaultValue,
-			Optional: optional,
+func BindUint16(name string, description string, optional bool, defaultValue uint16) *Binder[uint16] {
+	return &Binder[uint16]{
+		flag: &Flag[uint16]{
+			Name:        name,
+			parser:      uint16Parser(),
+			Default:     defaultValue,
+			Optional:    optional,
+			Description: description,
 		},
 	}
 }
 
-func BindUint32(name string, optional bool, defaultValue uint32) *FlagContext[uint32] {
-	return &FlagContext[uint32]{
-		flag: &flag[uint32]{
-			Name:     name,
-			Parser:   uint32Parser(),
-			Default:  defaultValue,
-			Optional: optional,
+func BindUint32(name string, description string, optional bool, defaultValue uint32) *Binder[uint32] {
+	return &Binder[uint32]{
+		flag: &Flag[uint32]{
+			Name:        name,
+			parser:      uint32Parser(),
+			Default:     defaultValue,
+			Optional:    optional,
+			Description: description,
 		},
 	}
 }
 
-func BindUint64(name string, optional bool, defaultValue uint64) *FlagContext[uint64] {
-	return &FlagContext[uint64]{
-		flag: &flag[uint64]{
-			Name:     name,
-			Parser:   uint64Parser(),
-			Default:  defaultValue,
-			Optional: optional,
+func BindUint64(name string, description string, optional bool, defaultValue uint64) *Binder[uint64] {
+	return &Binder[uint64]{
+		flag: &Flag[uint64]{
+			Name:        name,
+			parser:      uint64Parser(),
+			Default:     defaultValue,
+			Optional:    optional,
+			Description: description,
 		},
 	}
 }
 
-func BindFloat32(name string, optional bool, defaultValue float32) *FlagContext[float32] {
-	return &FlagContext[float32]{
-		flag: &flag[float32]{
-			Name:     name,
-			Parser:   float32Parser(),
-			Default:  defaultValue,
-			Optional: optional,
+func BindFloat32(name string, description string, optional bool, defaultValue float32) *Binder[float32] {
+	return &Binder[float32]{
+		flag: &Flag[float32]{
+			Name:        name,
+			parser:      float32Parser(),
+			Default:     defaultValue,
+			Optional:    optional,
+			Description: description,
 		},
 	}
 }
 
-func BindFloat64(name string, optional bool, defaultValue float64) *FlagContext[float64] {
-	return &FlagContext[float64]{
-		flag: &flag[float64]{
-			Name:     name,
-			Parser:   float64Parser(),
-			Default:  defaultValue,
-			Optional: optional,
+func BindFloat64(name string, description string, optional bool, defaultValue float64) *Binder[float64] {
+	return &Binder[float64]{
+		flag: &Flag[float64]{
+			Name:        name,
+			parser:      float64Parser(),
+			Default:     defaultValue,
+			Optional:    optional,
+			Description: description,
 		},
 	}
 }

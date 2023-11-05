@@ -1,9 +1,10 @@
 package flags
 
 import (
-	"github.com/pasataleo/go-errors/errors"
 	"strconv"
 	"strings"
+
+	"github.com/pasataleo/go-errors/errors"
 )
 
 type Parser[T any] interface {
@@ -38,16 +39,16 @@ func (p *singleArgParser[T]) Parse(name string, args []string) (T, error) {
 	var errorResult T
 
 	if len(args) == 0 {
-		return errorResult, errors.Newf(nil, ErrorCodeMissingFlag, "missing flag %s", name)
+		return errorResult, errors.Newf(nil, ErrorCodeMissingFlag, "missing flag %q", name)
 	}
 
 	if len(args) > 1 {
-		return errorResult, errors.Newf(nil, ErrorCodeDuplicateFlag, "duplicate flag %s", name)
+		return errorResult, errors.Newf(nil, ErrorCodeDuplicateFlag, "duplicate flag %q", name)
 	}
 
 	value, err := p.parser(args[0])
 	if err != nil {
-		return errorResult, errors.Newf(err, ErrorCodeInvalidValue, "invalid value for flag %s", name)
+		return errorResult, errors.Newf(err, ErrorCodeInvalidValue, "invalid value for flag %q", name)
 	}
 	return value, nil
 }
@@ -169,7 +170,7 @@ type boolParser struct{}
 
 func (p *boolParser) Parse(name string, args map[string]string) (bool, error) {
 	if len(args) > 1 {
-		return false, errors.Newf(nil, ErrorCodeDuplicateFlag, "duplicate flag %s", name)
+		return false, errors.Newf(nil, ErrorCodeDuplicateFlag, "duplicate flag %q", name)
 	}
 
 	for name, value := range args {
@@ -180,7 +181,7 @@ func (p *boolParser) Parse(name string, args map[string]string) (bool, error) {
 
 			value, err := strconv.ParseBool(value)
 			if err != nil {
-				return false, errors.Newf(err, ErrorCodeInvalidValue, "invalid value for flag %s", name)
+				return false, errors.Newf(err, ErrorCodeInvalidValue, "invalid value for flag %q", name)
 			}
 			return !value, nil
 		}
@@ -190,9 +191,9 @@ func (p *boolParser) Parse(name string, args map[string]string) (bool, error) {
 		}
 		value, err := strconv.ParseBool(value)
 		if err != nil {
-			return false, errors.Newf(err, ErrorCodeInvalidValue, "invalid value for flag %s", name)
+			return false, errors.Newf(err, ErrorCodeInvalidValue, "invalid value for flag %q", name)
 		}
 		return value, nil
 	}
-	return false, errors.Newf(nil, ErrorCodeMissingFlag, "missing flag %s", name)
+	return false, errors.Newf(nil, ErrorCodeMissingFlag, "missing flag %q", name)
 }

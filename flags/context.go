@@ -1,63 +1,64 @@
 package flags
 
 import (
+	"reflect"
+
 	"github.com/pasataleo/go-errors/errors"
 	"github.com/pasataleo/go-inject/inject"
-	"reflect"
 )
 
-type FlagContext[T any] struct {
-	flag *flag[T]
+type Binder[T any] struct {
+	flag *Flag[T]
 }
 
-func (ctx *FlagContext[T]) To(flags *Flags, target *T) error {
-	ctx.flag.Target = reflect.ValueOf(target).Elem()
-	if err := ctx.setFlag(flags); err != nil {
+func (binder *Binder[T]) To(flags *Set, target *T) error {
+	binder.flag.target = reflect.ValueOf(target).Elem()
+	if err := binder.setFlag(flags); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (ctx *FlagContext[T]) ToUnsafe(flags *Flags, target *T) {
-	if err := ctx.To(flags, target); err != nil {
+func (binder *Binder[T]) ToUnsafe(flags *Set, target *T) {
+	if err := binder.To(flags, target); err != nil {
 		panic(err)
 	}
 }
 
-func (ctx *FlagContext[T]) ToInjector(flags *Flags, injector *inject.Injector, args ...string) error {
-	ctx.flag.Injector = injector
-	ctx.flag.Args = args
-	if err := ctx.setFlag(flags); err != nil {
+func (binder *Binder[T]) ToInjector(flags *Set, injector *inject.Injector, args ...string) error {
+	binder.flag.injector = injector
+	binder.flag.args = args
+	if err := binder.setFlag(flags); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (ctx *FlagContext[T]) ToInjectorUnsafe(flags *Flags, injector *inject.Injector, args ...string) {
-	if err := ctx.ToInjector(flags, injector, args...); err != nil {
+func (binder *Binder[T]) ToInjectorUnsafe(flags *Set, injector *inject.Injector, args ...string) {
+	if err := binder.ToInjector(flags, injector, args...); err != nil {
 		panic(err)
 	}
 }
 
-func (ctx *FlagContext[T]) setFlag(flags *Flags) error {
-	if _, exists := flags.flags[ctx.flag.Name]; exists {
-		return errors.Newf(nil, ErrorCodeDuplicateFlag, "duplicate flag %s", ctx.flag.Name)
+func (binder *Binder[T]) setFlag(flags *Set) error {
+	if _, exists := flags.Flags[binder.flag.Name]; exists {
+		return errors.Newf(nil, ErrorCodeDuplicateFlag, "duplicate flag %q", binder.flag.Name)
 	}
-	if _, exists := flags.aliases[ctx.flag.Name]; exists {
-		return errors.Newf(nil, ErrorCodeDuplicateFlag, "duplicate flag %s", ctx.flag.Name)
+	if _, exists := flags.aliases[binder.flag.Name]; exists {
+		return errors.Newf(nil, ErrorCodeDuplicateFlag, "duplicate flag %q", binder.flag.Name)
 	}
-	for _, alias := range ctx.flag.Aliases {
-		if _, exists := flags.flags[alias]; exists {
-			return errors.Newf(nil, ErrorCodeDuplicateFlag, "duplicate flag %s", alias)
+	for _, alias := range binder.flag.Aliases {
+		if _, exists := flags.Flags[alias]; exists {
+			return errors.Newf(nil, ErrorCodeDuplicateFlag, "duplicate flag %q", alias)
 		}
 		if _, exists := flags.aliases[alias]; exists {
-			return errors.Newf(nil, ErrorCodeDuplicateFlag, "duplicate flag %s", alias)
+			return errors.Newf(nil, ErrorCodeDuplicateFlag, "duplicate flag %q", alias)
 		}
 	}
 
-	flags.flags[ctx.flag.Name] = ctx.flag.generic()
-	for _, alias := range ctx.flag.Aliases {
-		flags.aliases[alias] = ctx.flag.Name
+	flags.Flags[binder.flag.Name] = binder.flag.generic()
+	for _, alias := range binder.flag.Aliases {
+		flags.aliases[alias] = binder.flag.Name
 	}
 	return nil
 }
