@@ -1,14 +1,16 @@
 module github.com/pasataleo/go-flags
 
-go 1.19
+go 1.23
+
+toolchain go1.23.2
 
 require (
-	github.com/pasataleo/go-errors v0.1.2
-	github.com/pasataleo/go-inject v0.1.0
-	github.com/pasataleo/go-testing v0.1.3
+	github.com/pasataleo/go-errors v0.2.0
+	github.com/pasataleo/go-inject v0.2.0
+	github.com/pasataleo/go-testing v0.2.2
 )
 
 require (
-	github.com/google/go-cmp v0.5.9 // indirect
-	github.com/pasataleo/go-objects v0.1.0 // indirect
+	github.com/google/go-cmp v0.6.0 // indirect
+	github.com/pasataleo/go-objects v0.2.0 // indirect
 )
