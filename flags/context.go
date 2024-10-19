@@ -11,7 +11,7 @@ type Binder[T any] struct {
 	flag *Flag[T]
 }
 
-func (binder *Binder[T]) To(flags *Set, target *T) error {
+func (binder *Binder[T]) ToSafe(flags *Set, target *T) error {
 	binder.flag.target = reflect.ValueOf(target).Elem()
 	if err := binder.setFlag(flags); err != nil {
 		return err
@@ -19,13 +19,13 @@ func (binder *Binder[T]) To(flags *Set, target *T) error {
 	return nil
 }
 
-func (binder *Binder[T]) ToUnsafe(flags *Set, target *T) {
-	if err := binder.To(flags, target); err != nil {
+func (binder *Binder[T]) To(flags *Set, target *T) {
+	if err := binder.ToSafe(flags, target); err != nil {
 		panic(err)
 	}
 }
 
-func (binder *Binder[T]) ToInjector(flags *Set, injector *inject.Injector, args ...string) error {
+func (binder *Binder[T]) ToInjectorSafe(flags *Set, injector *inject.Injector, args ...string) error {
 	binder.flag.injector = injector
 	binder.flag.args = args
 	if err := binder.setFlag(flags); err != nil {
@@ -34,8 +34,8 @@ func (binder *Binder[T]) ToInjector(flags *Set, injector *inject.Injector, args 
 	return nil
 }
 
-func (binder *Binder[T]) ToInjectorUnsafe(flags *Set, injector *inject.Injector, args ...string) {
-	if err := binder.ToInjector(flags, injector, args...); err != nil {
+func (binder *Binder[T]) ToInjector(flags *Set, injector *inject.Injector, args ...string) {
+	if err := binder.ToInjectorSafe(flags, injector, args...); err != nil {
 		panic(err)
 	}
 }

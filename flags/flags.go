@@ -12,7 +12,10 @@ import (
 type ParseBehavior int
 
 const (
+	// ParseBehaviorStrict will make the Parse function return an error if any of the flags are unknown.
 	ParseBehaviorStrict = iota
+
+	// ParseBehaviorReadOnly is used to parse flags without modifying the underlying arguments.
 	ParseBehaviorReadOnly
 )
 
@@ -46,7 +49,7 @@ func (flags *Set) parse(args []string, strict bool, readOnly bool) ([]string, er
 	var err error
 
 	// Anything we don't process will be returned.
-	var remaining []string
+	remaining := make([]string, 0, len(args))
 	if readOnly {
 		remaining = args
 	}
@@ -60,7 +63,7 @@ func (flags *Set) parse(args []string, strict bool, readOnly bool) ([]string, er
 
 	// unparsed maps flag names to unparsed flag values. We can have multiple values for a flag and aliases for flag
 	// names.
-	unparsed := make(map[string]map[string]string)
+	unparsed := make(map[string]map[string][]string)
 
 	isFlagName := func(arg string) (string, bool) {
 		if name, ok := strings.CutPrefix(arg, "--"); ok {
@@ -114,9 +117,9 @@ func (flags *Set) parse(args []string, strict bool, readOnly bool) ([]string, er
 
 		if containsValue {
 			if _, exists := unparsed[name]; !exists {
-				unparsed[name] = make(map[string]string)
+				unparsed[name] = make(map[string][]string)
 			}
-			unparsed[name][alias] = value
+			unparsed[name][alias] = append(unparsed[name][alias], value)
 			continue
 		}
 
@@ -124,18 +127,18 @@ func (flags *Set) parse(args []string, strict bool, readOnly bool) ([]string, er
 			nextArg := args[ix+1]
 			if _, isFlag := isFlagName(nextArg); !isFlag {
 				if _, exists := unparsed[name]; !exists {
-					unparsed[name] = make(map[string]string)
+					unparsed[name] = make(map[string][]string)
 				}
-				unparsed[name][alias] = nextArg
+				unparsed[name][alias] = append(unparsed[name][alias], nextArg)
 				skipNextArg = true
 				continue
 			}
 		}
 
 		if _, exists := unparsed[name]; !exists {
-			unparsed[name] = make(map[string]string)
+			unparsed[name] = make(map[string][]string)
 		}
-		unparsed[name][alias] = ""
+		unparsed[name][alias] = append(unparsed[name][alias], "")
 	}
 
 	for name, flag := range flags.Flags {
@@ -157,7 +160,7 @@ func (flags *Set) parse(args []string, strict bool, readOnly bool) ([]string, er
 		if flag.parser != nil {
 			var flattened []string
 			for _, value := range values {
-				flattened = append(flattened, value)
+				flattened = append(flattened, value...)
 			}
 
 			value, valueErr := flag.parser.Parse(name, flattened)
@@ -214,7 +217,7 @@ type Flag[T any] struct {
 
 func (f *Flag[T]) setValue(value T) error {
 	if f.injector != nil {
-		return inject.BindValue(value).To(f.injector, f.args...)
+		return inject.BindValue(value).ToSafe(f.injector, f.args...)
 	}
 
 	f.target.Set(reflect.ValueOf(value))
@@ -275,6 +278,21 @@ func BindBoolean(name string, description string, optional bool, defaultValue bo
 	}
 }
 
+func BindBooleanSlice(name string, description string, optional bool, defaultValue []bool) *Binder[[]bool] {
+	return &Binder[[]bool]{
+		flag: &Flag[[]bool]{
+			Name: name,
+			Aliases: []string{
+				fmt.Sprintf("no-%s", name),
+			},
+			Default:     defaultValue,
+			Optional:    optional,
+			Description: description,
+			aliasParser: &boolSliceParser{},
+		},
+	}
+}
+
 func BindString(name string, description string, optional bool, defaultValue string) *Binder[string] {
 	return &Binder[string]{
 		flag: &Flag[string]{
@@ -287,11 +305,35 @@ func BindString(name string, description string, optional bool, defaultValue str
 	}
 }
 
+func BindStringSlice(name string, description string, optional bool, defaultValue []string) *Binder[[]string] {
+	return &Binder[[]string]{
+		flag: &Flag[[]string]{
+			Name:        name,
+			Default:     defaultValue,
+			Optional:    optional,
+			Description: description,
+			parser:      stringSliceParser(),
+		},
+	}
+}
+
 func BindInt(name string, description string, optional bool, defaultValue int) *Binder[int] {
 	return &Binder[int]{
 		flag: &Flag[int]{
 			Name:        name,
 			parser:      intParser(),
+			Default:     defaultValue,
+			Optional:    optional,
+			Description: description,
+		},
+	}
+}
+
+func BindIntSlice(name string, description string, optional bool, defaultValue []int) *Binder[[]int] {
+	return &Binder[[]int]{
+		flag: &Flag[[]int]{
+			Name:        name,
+			parser:      intSliceParser(),
 			Default:     defaultValue,
 			Optional:    optional,
 			Description: description,
@@ -311,11 +353,35 @@ func BindInt8(name string, description string, optional bool, defaultValue int8)
 	}
 }
 
+func BindInt8Slice(name string, description string, optional bool, defaultValue []int8) *Binder[[]int8] {
+	return &Binder[[]int8]{
+		flag: &Flag[[]int8]{
+			Name:        name,
+			parser:      int8SliceParser(),
+			Default:     defaultValue,
+			Optional:    optional,
+			Description: description,
+		},
+	}
+}
+
 func BindInt16(name string, description string, optional bool, defaultValue int16) *Binder[int16] {
 	return &Binder[int16]{
 		flag: &Flag[int16]{
 			Name:        name,
 			parser:      int16Parser(),
+			Default:     defaultValue,
+			Optional:    optional,
+			Description: description,
+		},
+	}
+}
+
+func BindInt16Slice(name string, description string, optional bool, defaultValue []int16) *Binder[[]int16] {
+	return &Binder[[]int16]{
+		flag: &Flag[[]int16]{
+			Name:        name,
+			parser:      int16SliceParser(),
 			Default:     defaultValue,
 			Optional:    optional,
 			Description: description,
@@ -335,11 +401,35 @@ func BindInt32(name string, description string, optional bool, defaultValue int3
 	}
 }
 
+func BindInt32Slice(name string, description string, optional bool, defaultValue []int32) *Binder[[]int32] {
+	return &Binder[[]int32]{
+		flag: &Flag[[]int32]{
+			Name:        name,
+			parser:      int32SliceParser(),
+			Default:     defaultValue,
+			Optional:    optional,
+			Description: description,
+		},
+	}
+}
+
 func BindInt64(name string, description string, optional bool, defaultValue int64) *Binder[int64] {
 	return &Binder[int64]{
 		flag: &Flag[int64]{
 			Name:        name,
 			parser:      int64Parser(),
+			Default:     defaultValue,
+			Optional:    optional,
+			Description: description,
+		},
+	}
+}
+
+func BindInt64Slice(name string, description string, optional bool, defaultValue []int64) *Binder[[]int64] {
+	return &Binder[[]int64]{
+		flag: &Flag[[]int64]{
+			Name:        name,
+			parser:      int64SliceParser(),
 			Default:     defaultValue,
 			Optional:    optional,
 			Description: description,
@@ -359,11 +449,35 @@ func BindUint(name string, description string, optional bool, defaultValue uint)
 	}
 }
 
+func BindUintSlice(name string, description string, optional bool, defaultValue []uint) *Binder[[]uint] {
+	return &Binder[[]uint]{
+		flag: &Flag[[]uint]{
+			Name:        name,
+			parser:      uintSliceParser(),
+			Default:     defaultValue,
+			Optional:    optional,
+			Description: description,
+		},
+	}
+}
+
 func BindUint8(name string, description string, optional bool, defaultValue uint8) *Binder[uint8] {
 	return &Binder[uint8]{
 		flag: &Flag[uint8]{
 			Name:        name,
 			parser:      uint8Parser(),
+			Default:     defaultValue,
+			Optional:    optional,
+			Description: description,
+		},
+	}
+}
+
+func BindUint8Slice(name string, description string, optional bool, defaultValue []uint8) *Binder[[]uint8] {
+	return &Binder[[]uint8]{
+		flag: &Flag[[]uint8]{
+			Name:        name,
+			parser:      uint8SliceParser(),
 			Default:     defaultValue,
 			Optional:    optional,
 			Description: description,
@@ -383,11 +497,35 @@ func BindUint16(name string, description string, optional bool, defaultValue uin
 	}
 }
 
+func BindUint16Slice(name string, description string, optional bool, defaultValue []uint16) *Binder[[]uint16] {
+	return &Binder[[]uint16]{
+		flag: &Flag[[]uint16]{
+			Name:        name,
+			parser:      uint16SliceParser(),
+			Default:     defaultValue,
+			Optional:    optional,
+			Description: description,
+		},
+	}
+}
+
 func BindUint32(name string, description string, optional bool, defaultValue uint32) *Binder[uint32] {
 	return &Binder[uint32]{
 		flag: &Flag[uint32]{
 			Name:        name,
 			parser:      uint32Parser(),
+			Default:     defaultValue,
+			Optional:    optional,
+			Description: description,
+		},
+	}
+}
+
+func BindUint32Slice(name string, description string, optional bool, defaultValue []uint32) *Binder[[]uint32] {
+	return &Binder[[]uint32]{
+		flag: &Flag[[]uint32]{
+			Name:        name,
+			parser:      uint32SliceParser(),
 			Default:     defaultValue,
 			Optional:    optional,
 			Description: description,
@@ -407,6 +545,18 @@ func BindUint64(name string, description string, optional bool, defaultValue uin
 	}
 }
 
+func BindUint64Slice(name string, description string, optional bool, defaultValue []uint64) *Binder[[]uint64] {
+	return &Binder[[]uint64]{
+		flag: &Flag[[]uint64]{
+			Name:        name,
+			parser:      uint64SliceParser(),
+			Default:     defaultValue,
+			Optional:    optional,
+			Description: description,
+		},
+	}
+}
+
 func BindFloat32(name string, description string, optional bool, defaultValue float32) *Binder[float32] {
 	return &Binder[float32]{
 		flag: &Flag[float32]{
@@ -419,11 +569,35 @@ func BindFloat32(name string, description string, optional bool, defaultValue fl
 	}
 }
 
+func BindFloat32Slice(name string, description string, optional bool, defaultValue []float32) *Binder[[]float32] {
+	return &Binder[[]float32]{
+		flag: &Flag[[]float32]{
+			Name:        name,
+			parser:      float32SliceParser(),
+			Default:     defaultValue,
+			Optional:    optional,
+			Description: description,
+		},
+	}
+}
+
 func BindFloat64(name string, description string, optional bool, defaultValue float64) *Binder[float64] {
 	return &Binder[float64]{
 		flag: &Flag[float64]{
 			Name:        name,
 			parser:      float64Parser(),
+			Default:     defaultValue,
+			Optional:    optional,
+			Description: description,
+		},
+	}
+}
+
+func BindFloat64Slice(name string, description string, optional bool, defaultValue []float64) *Binder[[]float64] {
+	return &Binder[[]float64]{
+		flag: &Flag[[]float64]{
+			Name:        name,
+			parser:      float64SliceParser(),
 			Default:     defaultValue,
 			Optional:    optional,
 			Description: description,
