@@ -6,7 +6,6 @@ toolchain go1.23.2
 
 require (
 	github.com/pasataleo/go-errors v0.2.0
-	github.com/pasataleo/go-inject v0.2.0
 	github.com/pasataleo/go-testing v0.2.2
 )
 

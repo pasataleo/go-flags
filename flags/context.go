@@ -4,14 +4,15 @@ import (
 	"reflect"
 
 	"github.com/pasataleo/go-errors/errors"
-	"github.com/pasataleo/go-inject/inject"
 )
 
 type Binder[T any] struct {
 	flag *Flag[T]
 }
 
-func (binder *Binder[T]) ToSafe(flags *Set, target *T) error {
+type TargetFn[T any] func(name string, value T) error
+
+func (binder *Binder[T]) ToValueSafe(flags *Set, target *T) error {
 	binder.flag.target = reflect.ValueOf(target).Elem()
 	if err := binder.setFlag(flags); err != nil {
 		return err
@@ -19,23 +20,22 @@ func (binder *Binder[T]) ToSafe(flags *Set, target *T) error {
 	return nil
 }
 
-func (binder *Binder[T]) To(flags *Set, target *T) {
-	if err := binder.ToSafe(flags, target); err != nil {
+func (binder *Binder[T]) ToValue(flags *Set, target *T) {
+	if err := binder.ToValueSafe(flags, target); err != nil {
 		panic(err)
 	}
 }
 
-func (binder *Binder[T]) ToInjectorSafe(flags *Set, injector *inject.Injector, args ...string) error {
-	binder.flag.injector = injector
-	binder.flag.args = args
+func (binder *Binder[T]) ToFunctionSafe(flags *Set, target TargetFn[T]) error {
+	binder.flag.targetFn = target
 	if err := binder.setFlag(flags); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (binder *Binder[T]) ToInjector(flags *Set, injector *inject.Injector, args ...string) {
-	if err := binder.ToInjectorSafe(flags, injector, args...); err != nil {
+func (binder *Binder[T]) ToFunction(flags *Set, target TargetFn[T]) {
+	if err := binder.ToFunctionSafe(flags, target); err != nil {
 		panic(err)
 	}
 }

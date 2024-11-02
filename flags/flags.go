@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/pasataleo/go-errors/errors"
-	"github.com/pasataleo/go-inject/inject"
 )
 
 type ParseBehavior int
@@ -207,17 +206,15 @@ type Flag[T any] struct {
 	parser      Parser[T]
 	aliasParser aliasParser[T]
 
-	// injector and args are used for injecting the flag value via an injector.
-	injector *inject.Injector
-	args     []string
+	targetFn TargetFn[T]
 
 	// target is used for injecting the flag value directly into a value.
 	target reflect.Value
 }
 
 func (f *Flag[T]) setValue(value T) error {
-	if f.injector != nil {
-		return inject.BindValue(value).ToSafe(f.injector, f.args...)
+	if f.targetFn != nil {
+		return f.targetFn(f.Name, value)
 	}
 
 	f.target.Set(reflect.ValueOf(value))
@@ -231,9 +228,10 @@ func (f *Flag[T]) generic() *Flag[interface{}] {
 		Default:     f.Default,
 		Optional:    f.Optional,
 		Description: f.Description,
-		injector:    f.injector,
-		args:        f.args,
-		target:      f.target,
+		targetFn: func(_ string, i interface{}) error {
+			return f.setValue(i.(T))
+		},
+		target: f.target,
 	}
 
 	if f.parser != nil {

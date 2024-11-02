@@ -3,7 +3,6 @@ package flags
 import (
 	"testing"
 
-	"github.com/pasataleo/go-inject/inject"
 	"github.com/pasataleo/go-testing/tests"
 )
 
@@ -12,7 +11,7 @@ func TestFlags_Single(t *testing.T) {
 
 	flags := NewSet()
 
-	BindString("value", "", false, "default").To(flags, &value)
+	BindString("value", "", false, "default").ToValue(flags, &value)
 
 	args := []string{"--value=hello"}
 	tests.Execute2E(flags.Parse(args)).NoError(t).Equal(t, make([]string, 0))
@@ -24,7 +23,7 @@ func TestFlags_Multi(t *testing.T) {
 
 	flags := NewSet()
 
-	BindStringSlice("value", "", false, nil).To(flags, &value)
+	BindStringSlice("value", "", false, nil).ToValue(flags, &value)
 
 	args := []string{"--value=hello", "--value=world"}
 	tests.Execute2E(flags.Parse(args)).NoError(t).Equal(t, make([]string, 0))
@@ -36,7 +35,7 @@ func TestFlags_SingleAlternateFormat(t *testing.T) {
 
 	flags := NewSet()
 
-	BindString("value", "", false, "default").To(flags, &value)
+	BindString("value", "", false, "default").ToValue(flags, &value)
 
 	args := []string{"--value", "hello"}
 	tests.Execute2E(flags.Parse(args)).NoError(t).Equal(t, make([]string, 0))
@@ -48,7 +47,7 @@ func TestFlags_SingleWithPath(t *testing.T) {
 
 	flags := NewSet()
 
-	BindString("value", "", false, "default").To(flags, &value)
+	BindString("value", "", false, "default").ToValue(flags, &value)
 
 	args := []string{"--value", "hello", "world"}
 	tests.Execute2E(flags.Parse(args)).NoError(t).Equal(t, []string{"world"})
@@ -60,7 +59,7 @@ func TestFlags_SingleAlternateName(t *testing.T) {
 
 	flags := NewSet()
 
-	BindString("value", "", false, "default").To(flags, &value)
+	BindString("value", "", false, "default").ToValue(flags, &value)
 
 	args := []string{"-value", "hello", "world"}
 	tests.Execute2E(flags.Parse(args)).NoError(t).Equal(t, []string{"world"})
@@ -72,7 +71,7 @@ func TestFlags_SingleOptional(t *testing.T) {
 
 	flags := NewSet()
 
-	BindString("value", "", true, "default").To(flags, &value)
+	BindString("value", "", true, "default").ToValue(flags, &value)
 
 	args := []string{"world"}
 	tests.Execute2E(flags.Parse(args)).NoError(t).Equal(t, []string{"world"})
@@ -85,8 +84,8 @@ func TestFlags_SingleAliased(t *testing.T) {
 
 	flags := NewSet()
 
-	BindBoolean("false", "", false, false).To(flags, &valueFalse)
-	BindBoolean("true", "", false, true).To(flags, &valueTrue)
+	BindBoolean("false", "", false, false).ToValue(flags, &valueFalse)
+	BindBoolean("true", "", false, true).ToValue(flags, &valueTrue)
 
 	args := []string{"--no-false", "--true"}
 	tests.Execute2E(flags.Parse(args)).NoError(t).Equal(t, make([]string, 0))
@@ -101,8 +100,8 @@ func TestFlags_MultiAliased(t *testing.T) {
 
 	flags := NewSet()
 
-	BindBooleanSlice("false", "", false, nil).To(flags, &valueFalse)
-	BindBooleanSlice("true", "", false, nil).To(flags, &valueTrue)
+	BindBooleanSlice("false", "", false, nil).ToValue(flags, &valueFalse)
+	BindBooleanSlice("true", "", false, nil).ToValue(flags, &valueTrue)
 
 	args := []string{"--no-false", "--true", "--false"}
 	tests.Execute2E(flags.Parse(args)).NoError(t).Equal(t, make([]string, 0))
@@ -116,7 +115,7 @@ func TestFlags_MissingRequiredFlag(t *testing.T) {
 
 	flags := NewSet()
 
-	BindInt("number", "", false, 0).To(flags, &number)
+	BindInt("number", "", false, 0).ToValue(flags, &number)
 
 	tests.Execute2E(flags.Parse([]string{})).ErrorCode(t, ErrorCodeMissingFlag)
 }
@@ -126,7 +125,7 @@ func TestFlags_InvalidValue(t *testing.T) {
 
 	flags := NewSet()
 
-	BindInt("number", "", false, 0).To(flags, &number)
+	BindInt("number", "", false, 0).ToValue(flags, &number)
 
 	args := []string{"-number=notanumber"}
 	tests.Execute2E(flags.Parse(args)).ErrorCode(t, ErrorCodeInvalidValue)
@@ -149,7 +148,7 @@ func TestFlags_ParseReadOnly(t *testing.T) {
 
 	flags := NewSet()
 
-	BindString("value", "", false, "default").To(flags, &value)
+	BindString("value", "", false, "default").ToValue(flags, &value)
 
 	args := []string{"path/to/executable", "--value", "hello"}
 	tests.Execute2E(flags.Parse(args, ParseBehaviorReadOnly)).NoError(t).Equal(t, args)
@@ -157,12 +156,16 @@ func TestFlags_ParseReadOnly(t *testing.T) {
 }
 
 func TestFlags_ParseToInjector(t *testing.T) {
-	injector := inject.NewInjector()
+	var value string
+	targetFn := func(_ string, v string) error {
+		value = v
+		return nil
+	}
 
 	flags := NewSet()
-	BindString("value", "", false, "default").ToInjector(flags, injector, "value")
+	BindString("value", "", false, "default").ToFunction(flags, targetFn)
 
 	args := []string{"--value", "hello"}
 	tests.Execute2E(flags.Parse(args)).NoError(t).Equal(t, make([]string, 0))
-	tests.Execute2E(injector.Get("value")).NoError(t).Equal(t, "hello")
+	tests.Execute(value).Equal(t, "hello")
 }
